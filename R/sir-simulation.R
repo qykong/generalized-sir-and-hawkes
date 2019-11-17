@@ -83,7 +83,7 @@ sample.infected.interval.inverted <- function(params, recovery.times, S) {
 #' @param inverted if false then rejection sampling will be used. The sampling strategy shown in the paper will be applied otherwise
 #' 
 #' @return a data.frame where each row is an infection or recovery event
-generate.stochastic.sir.power.law <- function(params, Tmax = Inf, distribution.type = 'PL', inverted = T) {
+generate.stochastic.sir <- function(params, Tmax = Inf, distribution.type = 'PL', inverted = T) {
   ## start at time 0
   state <- data.frame(t = 0, I = params["I.0"], S = params["N"] - params["I.0"], C = params["I.0"])
   rownames(state) <- NULL
@@ -124,4 +124,24 @@ generate.stochastic.sir.power.law <- function(params, Tmax = Inf, distribution.t
   
   cat(sprintf("\n--> Simulation done!\n"))
   return(state)
+}
+
+#' From a stochastic state data.frame (generated using generate.stochastic.sir),
+#' this function extracts the event series. For compatibility with Hawkes, it
+#' also creates dummy event magnitudes of 1.1.
+SIR2HAWKES.stochastic.event.series <- function(state) {
+  state <- as.data.frame(state)
+  
+  ## generate as many events with time 0 as there are I.0 (infections at time 0)
+  history <- as.data.frame(matrix(data = rep(x = c(1, 0), times = state$I[1]), nrow = state$I[1], ncol = 2, byrow = T))
+  colnames(history) <- c("magnitude", "time")
+  if (length(unique(state$C)) == 1) return(history)
+  ## compute where we had a new infection event
+  state$new <- F
+  state$new[-1] <- state$C[-1] > state$C[-nrow(state)]
+  evnt <- data.frame(magnitude = 1, time = state$time[state$new])
+  
+  ## concatenate the two
+  history <- rbind(history, evnt)
+  return(history)
 }
