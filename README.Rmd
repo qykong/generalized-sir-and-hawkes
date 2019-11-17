@@ -27,7 +27,7 @@ set.seed(2)
 We then simulate some stochastic SIR processes
 ```{r,message=FALSE}
 sim_no <- 50 # simulate 100 processes
-params.S <- c(beta = 2, gamma = 0.5, I.0 = 1, N = 100) # chosen SIR parameters 
+params.S <- c(beta = 5, gamma = 0.5, I.0 = 1, N = 100) # chosen SIR parameters 
 sims <- lapply(seq(sim_no), function(i) {
   # let's hide the printing from generate.stochastic.sir
   sink(tempfile()) 
@@ -35,9 +35,9 @@ sims <- lapply(seq(sim_no), function(i) {
   generate.stochastic.sir(params = params.S, distribution.type = 'EXP')
 })
 
-head(sims[[1]])
+tail(sims[[1]])
 ```
-A simulated process is represented by a `data.frame` where each row is an event, i.e. an infection or a recovery event. The columns are event times, suscetible counts $S_t$, infected count $I_t$, recovered counts $R_t$ and cumulative infected counts $C_t$, respectively. For example, the row $6$ represents an recovery event at time $1.5091091$ and the process stopped as there is no infected individual in the population anymore.
+A simulated process is represented by a `data.frame` where each row is an event, i.e. an infection or a recovery event. The columns are event times, suscetible counts $S_t$, infected count $I_t$, recovered counts $R_t$ and cumulative infected counts $C_t$, respectively. For example, the row $200$ represents an recovery event at time $10.696395$ and the process stopped as there is no infected individual in the population anymore.
 
 Before fitting an EXPN on these simulated processes, we first need to convert SIR processes to the Hawkes-friendly format, i.e. dropping all recovery events
 ```{r}
@@ -49,8 +49,18 @@ The converted `data.frame` now only keeps the infection event timestamps.
 
 Let's now fit the EXPN model
 ```{r}
-fit_series(sims.H, model_type = 'EXPN', cores = 10, observation_time = Inf, lower_bound = c(N = 100), upper_bound = c(N = 100))
+model <- fit_series(sims.H, model_type = 'EXPN', cores = 10, observation_time = Inf)
+
+cat(str_interp('According the param equivalence: 
+beta = ${model$par[["K"]] * model$par[["theta"]]},
+gamma = ${model$par[["theta"]]}'))
 ```
+You'll notice the modeling bias as discussed in [1].
+
+## Tutorial 2: goodness-of-fit tests on real retweet cascades
+
+TODO
+
 ## Reference
 
 If you find the code helpful, please consider citing the paper:
