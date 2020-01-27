@@ -6,5 +6,5 @@
   library(data.table)
   library(magrittr)
   library(cowplot)
-  library(HawkesFit)
+  library(evently)
   theme_set(theme_cowplot())

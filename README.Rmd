@@ -9,7 +9,7 @@ This repo hosts the code or links for reproducing the experiments presented in [
 
   - Datasets: we used three large Twitter retweet cacade datasets in our experiments. These datasets can be found at the links: [ActiveYT](https://github.com/computationalmedia/hip-popularity/tree/master/data), [NEWS](https://github.com/computationalmedia/featuredriven-hawkes/tree/master/data) and [SEISMIC](http://snap.stanford.edu/seismic/).
   - Generalized SIR Simulation: code appeared in this repo at `R/sir-simulation.R`.
-  - HawkesN Simulation and Fitting: code available in the package [HawkesFit](https://github.com/qykong/HawkesFit).
+  - HawkesN Simulation and Fitting: code available in the package [evenlty](https://github.com/behavioral-ds/evently).
   - HawkesN Goodness-of-fit Tests: code appeared in this repo at `R/goodness-of-fit.R`.
 
 ## Tutorial 1: fitting HawkesN on simulated generalized SIR processes
@@ -17,7 +17,7 @@ This repo hosts the code or links for reproducing the experiments presented in [
 In this tutorial, we are going to first simulate some stochastic SIR processes with an exponential recovery distribution and then fit them using EXPN (i.e. HawkesN processes with an exponential kernel).
 
 Let's first load all required packages and functions.
-```{r, include=FALSE}
+```{r,message=F}
 source('R/package.R')
 source('R/goodness-of-fit.R')
 source('R/sir-simulation.R')
@@ -59,7 +59,52 @@ You'll notice the modeling bias as discussed in [1].
 
 ## Tutorial 2: goodness-of-fit tests on real retweet cascades
 
-TODO
+In this tutorial, we run our goodness-of-fit experiments on a sub-sample of the NEWS dataset. Let's first load this dataset
+```{r}
+index <- read_csv(file = 'https://raw.githubusercontent.com/computationalmedia/featuredriven-hawkes/master/data/index.csv', col_types = 'dd')
+data_file <- read_csv(file = 'https://raw.githubusercontent.com/computationalmedia/featuredriven-hawkes/master/data/data.csv', col_types = 'dd')
+head(index)
+head(data_file)
+```
+Each row in `index.csv` is a single retweet event cascade whose events can be found in `data.csv` indexed by the `start_ind` and `end_ind` fields. Each row in `data.csv` is a tweet/retweet where `time` is the time relative to the initial tweet and `magnitude` is the number of followers the corresponding user had.
+
+There are in total 20,093 cascades in this dataset, but, in this tutorial, we will only use the first 5 cascades as a demonstration. We then fit the `EXPN` and `PLN` models on these complete cascades.
+```{r, results='hide'}
+selected_index <- index[seq(5), ]
+
+# get the corresponding casade events
+cascades <- pmap(selected_index, function(start_ind, end_ind) data_file[start_ind:end_ind, ])
+model_types <- c('mEXPN', 'mPL')
+
+fitted_results <- map(model_types, function(model) {
+  map(cascades, ~fit_series(list(.x), model_type = model, cores = 10, observation_time = Inf))
+}) %>%
+  set_names(model_types)
+```
+Now with the fitted results, let's test how good the fits are on the cascades
+```{r, warning=FALSE}
+goodness_tests <- map_df(model_types, function(model) {
+  map_dfr(seq_along(cascades), function(i) {
+    # get the corresponding fitted model
+    fitted_model <- fitted_results[[model]][[i]]
+    
+    # please refer to the Eq.15 in the paper
+    times <- Lambda(fitted_model$data[[1]], fitted_model$par, cascades[[i]]$time[-1], kernel.type = model)
+
+    ks_test_res <- ks.test(times, 'pexp')
+    
+    return(list(cascade_no = i, model_type = model, p_value = ks_test_res$p.value, distance = ks_test_res$stat[['D']]))
+  })
+})
+head(goodness_tests)
+```
+We can further aggregate the results in terms of the p_values to check the passing rate given the significance level is 0.05
+```{r}
+goodness_tests %>%
+  group_by(model_type) %>%
+  summarise(passing_rate = sum(p_value > 0.05)/length(p_value))
+```
+However, we note this is just a small sample results and please refer to the paper for results on the whole dataset.
 
 ## Reference
 

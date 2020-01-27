@@ -15,7 +15,7 @@ here:
   - Generalized SIR Simulation: code appeared in this repo at
     `R/sir-simulation.R`.
   - HawkesN Simulation and Fitting: code available in the package
-    [HawkesFit](https://github.com/qykong/HawkesFit).
+    [evenlty](https://github.com/behavioral-ds/evently).
   - HawkesN Goodness-of-fit Tests: code appeared in this repo at
     `R/goodness-of-fit.R`.
 
@@ -26,6 +26,13 @@ processes with an exponential recovery distribution and then fit them
 using EXPN (i.e. HawkesN processes with an exponential kernel).
 
 Let’s first load all required packages and functions.
+
+``` r
+source('R/package.R')
+source('R/goodness-of-fit.R')
+source('R/sir-simulation.R')
+set.seed(2)
+```
 
 We then simulate some stochastic SIR processes
 
@@ -98,7 +105,110 @@ You’ll notice the modeling bias as discussed in \[1\].
 
 ## Tutorial 2: goodness-of-fit tests on real retweet cascades
 
-TODO
+In this tutorial, we run our goodness-of-fit experiments on a sub-sample
+of the NEWS dataset. Let’s first load this
+dataset
+
+``` r
+index <- read_csv(file = 'https://raw.githubusercontent.com/computationalmedia/featuredriven-hawkes/master/data/index.csv', col_types = 'dd')
+data_file <- read_csv(file = 'https://raw.githubusercontent.com/computationalmedia/featuredriven-hawkes/master/data/data.csv', col_types = 'dd')
+head(index)
+```
+
+    ## # A tibble: 6 x 2
+    ##   start_ind end_ind
+    ##       <dbl>   <dbl>
+    ## 1         1      63
+    ## 2        64     126
+    ## 3       127     242
+    ## 4       243     295
+    ## 5       296     365
+    ## 6       366     452
+
+``` r
+head(data_file)
+```
+
+    ## # A tibble: 6 x 2
+    ##    time magnitude
+    ##   <dbl>     <dbl>
+    ## 1     0      2086
+    ## 2   136       357
+    ## 3   153       340
+    ## 4   168       724
+    ## 5   191      5553
+    ## 6   221       345
+
+Each row in `index.csv` is a single retweet event cascade whose events
+can be found in `data.csv` indexed by the `start_ind` and `end_ind`
+fields. Each row in `data.csv` is a tweet/retweet where `time` is the
+time relative to the initial tweet and `magnitude` is the number of
+followers the corresponding user had.
+
+There are in total 20,093 cascades in this dataset, but, in this
+tutorial, we will only use the first 5 cascades as a demonstration. We
+then fit the `EXPN` and `PLN` models on these complete cascades.
+
+``` r
+selected_index <- index[seq(5), ]
+
+# get the corresponding casade events
+cascades <- pmap(selected_index, function(start_ind, end_ind) data_file[start_ind:end_ind, ])
+model_types <- c('mEXPN', 'mPL')
+
+fitted_results <- map(model_types, function(model) {
+  map(cascades, ~fit_series(list(.x), model_type = model, cores = 10, observation_time = Inf))
+}) %>%
+  set_names(model_types)
+```
+
+Now with the fitted results, let’s test how good the fits are on the
+cascades
+
+``` r
+goodness_tests <- map_df(model_types, function(model) {
+  map_dfr(seq_along(cascades), function(i) {
+    # get the corresponding fitted model
+    fitted_model <- fitted_results[[model]][[i]]
+    
+    # please refer to the Eq.15 in the paper
+    times <- Lambda(fitted_model$data[[1]], fitted_model$par, cascades[[i]]$time[-1], kernel.type = model)
+
+    ks_test_res <- ks.test(times, 'pexp')
+    
+    return(list(cascade_no = i, model_type = model, p_value = ks_test_res$p.value, distance = ks_test_res$stat[['D']]))
+  })
+})
+head(goodness_tests)
+```
+
+    ## # A tibble: 6 x 4
+    ##   cascade_no model_type   p_value distance
+    ##        <int> <chr>          <dbl>    <dbl>
+    ## 1          1 mEXPN      0.00505      0.216
+    ## 2          2 mEXPN      0.0507       0.172
+    ## 3          3 mEXPN      0.0000832    0.209
+    ## 4          4 mEXPN      0.00963      0.227
+    ## 5          5 mEXPN      0.000259     0.251
+    ## 6          1 mPL        0.500        0.103
+
+We can further aggregate the results in terms of the p\_values to check
+the passing rate given the significance level is 0.05
+
+``` r
+goodness_tests %>%
+  group_by(model_type) %>%
+  summarise(passing_rate = sum(p_value > 0.05)/length(p_value))
+```
+
+    ## # A tibble: 2 x 2
+    ##   model_type passing_rate
+    ##   <chr>             <dbl>
+    ## 1 mEXPN               0.2
+    ## 2 mPL                 1
+
+However, we note this is just a small sample results and please refer to
+the paper for results on the whole dataset.
 
 ## Reference
 

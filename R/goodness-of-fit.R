@@ -2,6 +2,12 @@
 # including the functions for computing Lambda of all model types 
 Lambda <- function(history, params, t, marked = T, kernel.type = 'EXPN') {
   if (any(is.na(params))) stop('params are NA!')
+  if (str_detect(kernel.type, 'm')) {
+    marked <- T
+    kernel.type <- str_replace(kernel.type, 'm', '')
+  } else {
+    marked <- F
+  }
   params[['beta']] <- ifelse(marked, params[['beta']], 0)
   switch(kernel.type,
          PL = Lambda.PL(history, params, t),
